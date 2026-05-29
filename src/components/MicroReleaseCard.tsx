@@ -1,30 +1,47 @@
-import { useState, useEffect, useRef } from 'react';
+import { useReducer, useEffect } from 'react';
 import { type MicroRelease } from '../types';
 
 interface Props {
   release: MicroRelease;
 }
 
+type State = { running: boolean; timeLeft: number };
+type Action =
+  | { type: 'start'; durationSec: number }
+  | { type: 'pause' }
+  | { type: 'reset'; durationSec: number }
+  | { type: 'tick' };
+
+function timerReducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'start':
+      return { running: true, timeLeft: action.durationSec };
+    case 'pause':
+      return { ...state, running: false };
+    case 'reset':
+      return { running: false, timeLeft: action.durationSec };
+    case 'tick': {
+      const next = state.timeLeft - 1;
+      return next <= 0
+        ? { running: false, timeLeft: 0 }
+        : { ...state, timeLeft: next };
+    }
+  }
+}
+
 export default function MicroReleaseCard({ release }: Props) {
-  const [running, setRunning] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(release.durationSec);
-  const intervalRef = useRef<number | null>(null);
+  const [{ running, timeLeft }, dispatch] = useReducer(timerReducer, {
+    running: false,
+    timeLeft: release.durationSec,
+  });
 
   useEffect(() => {
-    if (running && timeLeft > 0) {
-      intervalRef.current = window.setInterval(() => setTimeLeft(t => t - 1), 1000);
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running, timeLeft]);
+    if (!running) return;
+    const id = window.setInterval(() => dispatch({ type: 'tick' }), 1000);
+    return () => clearInterval(id);
+  }, [running]);
 
-  useEffect(() => {
-    if (timeLeft <= 0 && running) {
-      setRunning(false);
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    }
-  }, [timeLeft, running]);
-
-  const reset = () => { setRunning(false); setTimeLeft(release.durationSec); };
+  const reset = () => dispatch({ type: 'reset', durationSec: release.durationSec });
 
   return (
     <div className="rounded-2xl p-4 mb-3" style={{ background: '#2d1b40' }}>
@@ -40,12 +57,12 @@ export default function MicroReleaseCard({ release }: Props) {
       <p className="text-xs mb-3" style={{ color: '#a893b8' }}>{release.description}</p>
       <div className="flex gap-2">
         {!running ? (
-          <button onClick={() => { setTimeLeft(release.durationSec); setRunning(true); }}
+          <button onClick={() => dispatch({ type: 'start', durationSec: release.durationSec })}
             className="px-4 py-1.5 rounded-full text-xs font-medium" style={{ background: '#9b72cf', color: '#fff' }}>
             {timeLeft <= 0 ? 'Again' : 'Start'}
           </button>
         ) : (
-          <button onClick={() => setRunning(false)}
+          <button onClick={() => dispatch({ type: 'pause' })}
             className="px-4 py-1.5 rounded-full text-xs font-medium" style={{ background: '#3d2855', color: '#e8dff0' }}>
             Pause
           </button>
